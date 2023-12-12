@@ -49,6 +49,8 @@ elif args.visual == "tensorboard":
     vh = visualhandler.TensorBoardVisualHandler(log_dir="log_tb")
 elif args.visual == "visdom":
     vh = visualhandler.VisdomVisualHandler(port=8097)
+elif args.visual == "wandb":
+    vh = visualhandler.WandbVisualHandler(log_dir="log_wandb")
 
 argdict = vars(args)
 argdict.pop("visual")

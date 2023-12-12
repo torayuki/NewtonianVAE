@@ -4,6 +4,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from view.visualhandlerbase import VisualHandlerBase
 
+import wandb
+
 
 class TensorBoardVisualHandler(VisualHandlerBase):
     def __init__(self, *args, **kwargs):
@@ -46,4 +48,14 @@ class VisdomVisualHandler(VisualHandlerBase):
             win="KL",
             opts={"title": "KL"},
         )
+        self.step += 1
+
+
+class WandbVisualHandler(VisualHandlerBase):
+    def __init__(self, *args, **kwargs):
+        wandb.init(*args, **kwargs)
+        self.step = 0
+
+    def plot(self, L, E_ll, E_kl, epoch):
+        wandb.log({"Loss": L, "NLL": E_ll, "KL": E_kl, "epoch": epoch}, step=self.step)
         self.step += 1

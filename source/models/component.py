@@ -412,3 +412,96 @@ class SpatialBroadcastDecoder64(nn.Module):
 
         y = self.dec_convs(z)
         return y
+
+
+class MultiLayerPerceptron(nn.Module):
+    def __init__(
+        self, dim_input: int, dim_output: int, num_layers: int, act_func: str, normalize: str = "default"
+    ) -> None:
+        super().__init__()
+
+        self._dim_input = dim_input
+        self._dim_output = dim_output
+        self._num_layers = num_layers
+        self._act_func = act_func
+        self._normalize = normalize
+
+        layers = []
+        activation = getattr(nn, act_func)()
+        for i in range(num_layers):
+            if i == num_layers - 1:
+                layers.append(nn.Linear(dim_input, dim_output))
+            else:
+                if i == 0:
+                    layers.append(nn.Linear(dim_input, dim_input))
+                else:
+                    layers.append(nn.Linear(dim_input, dim_input))
+                if normalize == "default":
+                    layers.append(nn.LayerNorm(dim_input))
+                elif normalize == "batch":
+                    layers.append(nn.BatchNorm1d(dim_input))
+                else:
+                    assert False, "normalize should be 'default' or 'batch'"
+                layers.append(activation)
+        self.network = nn.Sequential(*layers)
+        self.module = self.network
+
+    def forward(self, x: Tensor):
+        shape = x.shape
+        y = self.network(x)
+        y = y.reshape(*shape[:-1], self._dim_output)
+        return y
+
+
+class DeepEnsemble(nn.Module):
+    def __init__(
+        self,
+        dim_input: int,
+        dim_output: int,
+        num_layers: int,
+        num_networks: int,
+        act_func: str,
+        net_type: str = "MLP",
+        loss_func: str = "mse_loss",
+    ) -> None:
+        super().__init__()
+
+        self._net_settings = dict(
+            dim_input=dim_input,
+            dim_output=dim_output,
+            num_layers=num_layers,
+            act_func=act_func,
+        )
+        self.net_type = net_type
+        self.loss_func = getattr(F, loss_func)
+
+        self.networks = nn.ModuleList()
+
+        if net_type == "MLP":
+            for i in range(num_networks):
+                self.networks.append(MultiLayerPerceptron(**self._net_settings))
+        else:
+            assert False, "net_type should be 'MLP'"
+
+        self.modules = self.networks
+
+    def forward(self, x: Tensor):
+        preds = torch.empty(self._num_networks, *x.shape[:-1], self._dim_output)
+        for i, network in enumerate(self.networks):
+            preds[i] = network(x)
+        # mean = preds.mean(dim=0)
+        # var = preds.var(dim=0)
+        return preds
+
+    def get_loss(self, x: Tensor, y: Tensor):
+        preds = self.forward(x)
+        loss = torch.empty(self._num_networks)
+        for i, pred in enumerate(preds):
+            loss[i] = self.loss_func(pred, y)
+        return loss.mean()
+
+    def predict(self, x: Tensor):
+        preds = self.forward(x)
+        mean = preds.mean(dim=0)
+        var = preds.var(dim=0)
+        return mean, var
